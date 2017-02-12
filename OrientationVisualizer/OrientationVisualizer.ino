@@ -14,10 +14,6 @@ float gx, gy, gz;
 float roll, pitch, heading;
 float microsNow;
 boolean stop = false;
-float originalHeading;
-int stopAngle = 180;
-float disposition = 0;
-float lastT;
 byte* headingSend;
 
 // Enter a MAC address and IP address for your controller below.

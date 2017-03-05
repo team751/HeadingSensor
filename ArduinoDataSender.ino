@@ -26,18 +26,20 @@ int last = 0;
 int count = 0;
 int lastMod = 0;
 int sum = 0;
+int numMagnet = 4;
 float wheelDiameter = 6.25;
 unsigned long distanceTraveled = 0;
 
 #define INTERVAL 4
-int seconds = 1000 / INTERVAL;
+const int windowTime = 2000; //milliseconds
+const int intervalTime = windowTime / INTERVAL; //milliseconds
 int pulses[INTERVAL];
-float velocity = 0;
+float velocity = 0; //inches per second
 
 // chris's decl
 Madgwick filter;
-float microsPerReading, microsPrevious, lastMicros;
-float accelScale, gyroScale;
+float microsPerReading, microsPrevious, lastMicros; float accelScale, gyroScale;
+
 int aix, aiy, aiz;
 int gix, giy, giz;
 float ax, ay, az;
@@ -48,15 +50,15 @@ float originalHeading;
 
 void setup() {
   randomSeed(analogRead(0)); // can't be connected
-  
+
   // start the Ethernet and UDP:
   Ethernet.begin(mac, local);
   Udp.begin(localPort);
-  
+
   // do DNS lookup
   byte radioIP[] = {10, 07, 51, 1};
   dnsclient.begin(radioIP);
-  
+
   dnsclient.getHostByName("roboRIO-751-FRC.lan", ip);
   //Serial.print(ip);
 
@@ -69,7 +71,7 @@ void loop() {
   // chris's stuff
   // put your main code here, to run repeatedly:
   int x = 1 - digitalRead(2);
-  unsigned long timeX = millis() / seconds;
+  unsigned long timeX = millis() / intervalTime;
   int mod = timeX % INTERVAL;
 
 
@@ -79,18 +81,18 @@ void loop() {
       for (int i = 0; i < INTERVAL; i++) {
         sum += pulses[i];
       }
-      velocity = sum * wheelDiameter * PI ;
+      velocity = sum * wheelDiameter * PI / numMagnet / (windowTime / 1000.0);
     } else {
+      //pulses array has not been completely filled in yet
       for (int i = 0; i < mod; i++) {
         sum += pulses[i];
       }
-      velocity = sum * wheelDiameter * PI * INTERVAL / mod;
-
+      velocity = sum * wheelDiameter * PI * INTERVAL / mod / numMagnet / (windowTime / 1000.0);
     }
     //Serial.print("Velocity = ");
     //Serial.println(velocity);
 
-    distanceTraveled += velocity * 0.1;
+    distanceTraveled += (velocity * intervalTime) / 1000.0;
     //Serial.print("distanceTraveled: ");
     //Serial.println(distanceTraveled);
     pulses[mod] = 0;
@@ -103,8 +105,8 @@ void loop() {
     //Serial.print(pulses[i]);
     //Serial.print(" ");
   }
-    //Serial.println();
-  
+  //Serial.println();
+
   lastMod = mod;
   last = x;
 
@@ -115,10 +117,10 @@ void loop() {
 
   Udp.write(sendString.c_str(), sendString.length() + 1); //include terminating null character
   //Udp.write((byte*)&val, sizeof(int));
-  Udp.endPacket();    
+  Udp.endPacket();
 }
 
-void loopIMU(){
+void loopIMU() {
   //Heading
   if (microsNow - microsPrevious >= microsPerReading) {
 
@@ -136,8 +138,8 @@ void loopIMU(){
     // update the filter, which computes orientation
     filter.updateIMU(gx, gy, gz, ax, ay, az);
 
-//    roll = filter.getRoll();
-//    pitch = filter.getPitch();
+    //    roll = filter.getRoll();
+    //    pitch = filter.getPitch();
     heading = filter.getYaw();
     // increment previous time, so we keep proper pace
     microsPrevious = microsPrevious + microsPerReading;
@@ -157,7 +159,7 @@ float convertRawAcceleration(int aRaw) {
 
 
 float convertRawGyro(int gRaw) {
-  // since we are using 250 degrees/seconds range
+  // since we are using 250 degrees/intervalTime range
   // -250 maps to a raw value of -32768
   // +250 maps to a raw value of 32767
 
@@ -165,7 +167,7 @@ float convertRawGyro(int gRaw) {
   return g;
 }
 
-void setupIMU(){
+void setupIMU() {
   // start the IMU and filter
   CurieIMU.begin();
   CurieIMU.setGyroRate(25);
@@ -228,4 +230,3 @@ void setupIMU(){
 
   originalHeading = heading;
 }
-

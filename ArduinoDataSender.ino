@@ -125,7 +125,7 @@ void loop() {
 }
 
 void loopIMU() {
-  microsNow = micros()
+  microsNow = micros();
   //Heading
   if (microsNow - microsPrevious >= microsPerReading) {
 

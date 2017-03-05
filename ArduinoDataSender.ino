@@ -27,7 +27,8 @@ int count = 0;
 int lastMod = 0;
 int sum = 0;
 int numMagnet = 4;
-float wheelDiameter = 6.25;
+float wheelDiameter = 8.7;
+//6.25 on the 2017 robot
 unsigned long distanceTraveled = 0;
 
 #define INTERVAL 4
@@ -60,10 +61,13 @@ void setup() {
   dnsclient.begin(radioIP);
 
   dnsclient.getHostByName("roboRIO-751-FRC.lan", ip);
-  //Serial.print(ip);
+  ////Serial.print(ip);
 
   pinMode(2, INPUT_PULLUP);
-  //Serial.begin(9600);
+  ////Serial.begin(9600);
+
+  velocity = 0;
+  distanceTraveled = 0;
   setupIMU();
 }
 
@@ -89,12 +93,12 @@ void loop() {
       }
       velocity = sum * wheelDiameter * PI * INTERVAL / mod / numMagnet / (windowTime / 1000.0);
     }
-    //Serial.print("Velocity = ");
-    //Serial.println(velocity);
+    ////Serial.print("Velocity = ");
+    ////Serial.println(velocity);
 
     distanceTraveled += (velocity * intervalTime) / 1000.0;
-    //Serial.print("distanceTraveled: ");
-    //Serial.println(distanceTraveled);
+    ////Serial.print("distanceTraveled: ");
+    ////Serial.println(distanceTraveled);
     pulses[mod] = 0;
   }
 
@@ -102,10 +106,10 @@ void loop() {
   if (last == 0 && x == 1) pulses[mod]++;
 
   for (int i = 0; i < INTERVAL; i++) {
-    //Serial.print(pulses[i]);
-    //Serial.print(" ");
+    ////Serial.print(pulses[i]);
+    ////Serial.print(" ");
   }
-  //Serial.println();
+  ////Serial.println();
 
   lastMod = mod;
   last = x;
@@ -114,13 +118,14 @@ void loop() {
 
   Udp.beginPacket(ip, 7776);
   String sendString = "[" + String(heading) + "," + String(velocity) + "," + String(distanceTraveled) + "]";
-
+  ////Serial.print(sendString);
   Udp.write(sendString.c_str(), sendString.length() + 1); //include terminating null character
   //Udp.write((byte*)&val, sizeof(int));
   Udp.endPacket();
 }
 
 void loopIMU() {
+  microsNow = micros()
   //Heading
   if (microsNow - microsPrevious >= microsPerReading) {
 
@@ -176,15 +181,15 @@ void setupIMU() {
 
   //calibration
   CurieIMU.initialize();
-  Serial.print("Starting Gyroscope calibration...");
+  //Serial.print("Starting Gyroscope calibration...");
   CurieIMU.autoCalibrateGyroOffset();
-  Serial.println(" Done");
-  Serial.print("Starting Acceleration calibration...");
+  //Serial.println(" Done");
+  //Serial.print("Starting Acceleration calibration...");
   CurieIMU.autoCalibrateAccelerometerOffset(X_AXIS, 0);
   CurieIMU.autoCalibrateAccelerometerOffset(Y_AXIS, 0);
   CurieIMU.autoCalibrateAccelerometerOffset(Z_AXIS, 1);
-  Serial.println(" Done");
-  Serial.println("Enabling Gyroscope/Acceleration offset compensation");
+  //Serial.println(" Done");
+  //Serial.println("Enabling Gyroscope/Acceleration offset compensation");
   CurieIMU.setGyroOffsetEnabled(true);
   CurieIMU.setAccelOffsetEnabled(true);
 
@@ -194,11 +199,11 @@ void setupIMU() {
   CurieIMU.setGyroRange(250);
 
   // verify connection
-  Serial.println("Testing device connections...");
+  //Serial.println("Testing device connections...");
   if (CurieIMU.testConnection()) {
-    Serial.println("CurieIMU connection successful");
+    //Serial.println("CurieIMU connection successful");
   } else {
-    Serial.println("CurieIMU connection failed");
+    //Serial.println("CurieIMU connection failed");
   }
 
   // initialize variables to pace updates to correct rate

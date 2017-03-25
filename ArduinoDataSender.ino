@@ -26,16 +26,18 @@ int last = 0;
 int count = 0;
 int lastMod = 0;
 int sum = 0;
-int numMagnet = 4;
-float wheelDiameter = 8.7;
-//6.25 on the 2017 robot
-unsigned long distanceTraveled = 0;
+int numMagnet = 6;
+float wheelDiameter = 6.25;
+//8.7 on the 2016 robot
+unsigned long distanceTraveled0 = 0;
+unsigned long distanceTraveled1 = 0;
 
-#define INTERVAL 4
-const int windowTime = 2000; //milliseconds
+#define INTERVAL 8
+const int windowTime = 1000; //milliseconds
 const int intervalTime = windowTime / INTERVAL; //milliseconds
 int pulses[INTERVAL];
-float velocity = 0; //inches per second
+float velocity0 = 0; //inches per second
+float velocity1 = 0; //inches per second
 
 // chris's decl
 Madgwick filter;
@@ -50,21 +52,11 @@ float microsNow;
 float originalHeading;
 
 void setup() {
-  randomSeed(analogRead(0)); // can't be connected
-
-  // start the Ethernet and UDP:
-  Ethernet.begin(mac, local);
-  Udp.begin(localPort);
-
-  // do DNS lookup
-  byte radioIP[] = {10, 07, 51, 1};
-  dnsclient.begin(radioIP);
-
-  dnsclient.getHostByName("roboRIO-751-FRC.lan", ip);
-  ////Serial.print(ip);
-
-  pinMode(2, INPUT_PULLUP);
-  ////Serial.begin(9600);
+  //  randomSeed(analogRead(0)); // can't be connected
+  int [] pinNums = {4, 8}
+                   pinMode(pinNums[0], INPUT_PULLUP);
+  pinMode(pinNums[1], INPUT_PULLUP);
+  Serial.begin(9600);
 
   velocity = 0;
   distanceTraveled = 0;
@@ -74,54 +66,12 @@ void setup() {
 void loop() {
   // chris's stuff
   // put your main code here, to run repeatedly:
-  int x = 1 - digitalRead(2);
+  int x = 1 - digitalRead(4);
   unsigned long timeX = millis() / intervalTime;
   int mod = timeX % INTERVAL;
 
-
-  if (lastMod != mod) {
-    sum = 0;
-    if (timeX >= INTERVAL) {
-      for (int i = 0; i < INTERVAL; i++) {
-        sum += pulses[i];
-      }
-      velocity = sum * wheelDiameter * PI / numMagnet / (windowTime / 1000.0);
-    } else {
-      //pulses array has not been completely filled in yet
-      for (int i = 0; i < mod; i++) {
-        sum += pulses[i];
-      }
-      velocity = sum * wheelDiameter * PI * INTERVAL / mod / numMagnet / (windowTime / 1000.0);
-    }
-    ////Serial.print("Velocity = ");
-    ////Serial.println(velocity);
-
-    distanceTraveled += (velocity * intervalTime) / 1000.0;
-    ////Serial.print("distanceTraveled: ");
-    ////Serial.println(distanceTraveled);
-    pulses[mod] = 0;
-  }
-
-
-  if (last == 0 && x == 1) pulses[mod]++;
-
-  for (int i = 0; i < INTERVAL; i++) {
-    ////Serial.print(pulses[i]);
-    ////Serial.print(" ");
-  }
-  ////Serial.println();
-
-  lastMod = mod;
-  last = x;
-
-  loopIMU();
-
-  Udp.beginPacket(ip, 7776);
-  String sendString = "[" + String(heading) + "," + String(velocity) + "," + String(distanceTraveled) + "]";
-  ////Serial.print(sendString);
-  Udp.write(sendString.c_str(), sendString.length() + 1); //include terminating null character
-  //Udp.write((byte*)&val, sizeof(int));
-  Udp.endPacket();
+  sendSensorData(pinNums[0]);
+  sendSensorData(pinNums[1]);
 }
 
 void loopIMU() {
@@ -143,7 +93,7 @@ void loopIMU() {
     // update the filter, which computes orientation
     filter.updateIMU(gx, gy, gz, ax, ay, az);
 
-    //    roll = filter.getRoll();
+    //    roll = filter.geftRoll();
     //    pitch = filter.getPitch();
     heading = filter.getYaw();
     // increment previous time, so we keep proper pace
@@ -152,6 +102,66 @@ void loopIMU() {
   }
 }
 
+string sendSensorData(int pinNum) {
+  int x = 1 - digitalRead(pinNum);
+  unsigned long timeX = millis() / intervalTime;
+  int mod = timeX % INTERVAL;
+
+  if (lastMod != mod) {
+    sum = 0;
+    if (timeX >= INTERVAL) {
+      for (int i = 0; i < INTERVAL; i++) {
+        sum += pulses[i];
+      }
+      if (pinNum == pinNums[0])
+      { velocity0 = sum * wheelDiameter * PI / numMagnet / (windowTime / 1000.0);
+      } else {
+        velocity1 = sum * wheelDiameter * PI / numMagnet / (windowTime / 1000.0);
+      } else {
+        //pulses array has not been completely filled in yet
+        for (int i = 0; i < mod; i++) {
+          sum += pulses[i];
+        }
+        if (pinNum == pinNums[0])
+        { velocity0 = sum * wheelDiameter * PI * INTERVAL / mod / numMagnet / (windowTime / 1000.0);
+        } else {
+          velocity1 = sum * wheelDiameter * PI * INTERVAL / mod / numMagnet / (windowTime / 1000.0);
+        }
+      }
+      //    Serial.print("Velocity = ");
+      //    Serial.println(velocity);
+      if(pinNum == pinNums[0]){
+      distanceTraveled0 += (velocity0 * intervalTime) / 1000.0;
+      }else{
+        distanceTraveled1 += (velocity1 * intervalTime) / 1000.0;
+      }
+      //    Serial.print("distanceTraveled: ");
+      //    Serial.println(distanceTraveled);
+      pulses[mod] = 0;
+    }
+
+
+    if (last == 0 && x == 1) pulses[mod]++;
+
+    //  for (int i = 0; i < INTERVAL; i++) {
+    //      Serial.print(pulses[i]);
+    //      Serial.print(" ");
+    //  }
+    //    Serial.println();
+
+    lastMod = mod;
+    last = x;
+
+    loopIMU();
+
+    if(pinNum == pinNums[0]){
+    String sendString = "[" + "left" + "," + String(heading) + "," + String(velocity) + "," + String(distanceTraveled) + "]";
+    }else{
+    String sendString = "[" + "right" + "," + String(heading) + "," + String(velocity1) + "," + String(distanceTraveled1) + "]";
+    }
+    Serial.println(sendString);
+  }
+}
 
 float convertRawAcceleration(int aRaw) {
   // since we are using 2G range
@@ -235,3 +245,46 @@ void setupIMU() {
 
   originalHeading = heading;
 }
+
+/*
+ * if (lastMod != mod) {
+    sum = 0;
+    if (timeX >= INTERVAL) {
+      for (int i = 0; i < INTERVAL; i++) {
+        sum += pulses[i];
+      }
+      velocity = sum * wheelDiameter * PI / numMagnet / (windowTime / 1000.0);
+    } else {
+      //pulses array has not been completely filled in yet
+      for (int i = 0; i < mod; i++) {
+        sum += pulses[i];
+      }
+      velocity = sum * wheelDiameter * PI * INTERVAL / mod / numMagnet / (windowTime / 1000.0);
+    }
+    //    Serial.print("Velocity = ");
+    //    Serial.println(velocity);
+
+    distanceTraveled += (velocity * intervalTime) / 1000.0;
+    //    Serial.print("distanceTraveled: ");
+    //    Serial.println(distanceTraveled);
+    pulses[mod] = 0;
+  }
+
+
+  if (last == 0 && x == 1) pulses[mod]++;
+
+  //  for (int i = 0; i < INTERVAL; i++) {
+  //      Serial.print(pulses[i]);
+  //      Serial.print(" ");
+  //  }
+  //    Serial.println();
+
+  lastMod = mod;
+  last = x;
+
+  loopIMU();
+
+  String sendString = "[" + String(heading) + "," + String(velocity) + "," + String(distanceTraveled) + "]";
+  Serial.println(sendString);
+ * /
+ */

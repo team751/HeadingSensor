@@ -2,40 +2,34 @@
 #include <Ethernet.h>
 #include <EthernetUdp.h>
 #include <Dns.h>
-#include <CurieIMU.h>
+//#include <CurieIMU.h>
 #include <MadgwickAHRS.h>
 
-#define PIN 4
+#define NUM_OF_AXLES 2
 
 int val = 0;
 
-byte mac[] = {
-  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
-};
-IPAddress local(10, 7, 51, 123);
-IPAddress ip(10, 7, 51, 109);
-
-unsigned int localPort = 8888;      // local port to listen on
-
-// An EthernetUDP instance to let us send and receive packets over UDP
-EthernetUDP Udp;
-DNSClient dnsclient;
-
 // chris's declarations
-int last = 0;
 int count = 0;
 int lastMod = 0;
-int sum = 0;
-int numMagnet = 4;
-float wheelDiameter = 8.7;
+const int numMagnet = 4;
+const float wheelDiameter = 8.7;
 //6.25 on the 2017 robot
-unsigned long distanceTraveled = 0;
 
 #define INTERVAL 4
 const int windowTime = 2000; //milliseconds
 const int intervalTime = windowTime / INTERVAL; //milliseconds
-int pulses[INTERVAL];
-float velocity = 0; //inches per second
+
+struct Axle{
+  String side;
+  unsigned short pin;
+  unsigned long distanceTraveled;
+  float velocity; //inches per second
+  int last;
+  int pulses[INTERVAL];
+} leftAxle, rightAxle;
+
+Axle* axles[] = {&leftAxle, &rightAxle};
 
 // chris's decl
 Madgwick filter;
@@ -49,82 +43,72 @@ float roll, pitch, heading;
 float microsNow;
 float originalHeading;
 
+void setupAxles(){
+  leftAxle.pin = 4;
+  leftAxle.side = "Left";
+  rightAxle.pin = 8;
+  rightAxle.side = "Right";
+  for(unsigned int i = 0; i < NUM_OF_AXLES; i++){
+    pinMode(axles[i]->pin, INPUT_PULLUP);
+    axles[i]->distanceTraveled = 0;
+    axles[i]->velocity = 0;
+    axles[i]->last = 0;
+  }
+}
+
 void setup() {
+  setupAxles();
   randomSeed(analogRead(0)); // can't be connected
-
-  // start the Ethernet and UDP:
-  Ethernet.begin(mac, local);
-  Udp.begin(localPort);
-
-  // do DNS lookup
-  byte radioIP[] = {10, 07, 51, 1};
-  dnsclient.begin(radioIP);
-
-  dnsclient.getHostByName("roboRIO-751-FRC.lan", ip);
-  ////Serial.print(ip);
-
-  pinMode(2, INPUT_PULLUP);
-  ////Serial.begin(9600);
-
-  velocity = 0;
-  distanceTraveled = 0;
+  Serial.begin(9600);
   setupIMU();
+}
+
+String loopAxle(Axle* axle){
+  // put your main code here, to run repeatedly:
+  int x = 1 - digitalRead(axle->pin);
+  unsigned long timeX = millis() / intervalTime;
+  int mod = timeX % INTERVAL;
+  
+  if  (lastMod != mod) {
+    int sum = 0;
+    if (timeX >= INTERVAL) {
+      for (int i = 0; i < INTERVAL; i++) {
+        sum += axle->pulses[i];
+      }
+      axle->velocity = sum * wheelDiameter * PI / numMagnet / (windowTime / 1000.0);
+    } else {
+      //pulses array has not been completely filled in yet
+      for (int i = 0; i < mod; i++) {
+        sum += axle->pulses[i];
+      }
+      axle->velocity = sum * wheelDiameter * PI * INTERVAL / mod / numMagnet / (windowTime / 1000.0);
+    }
+    axle->distanceTraveled += (axle->velocity * intervalTime) / 1000.0;
+    axle->pulses[mod] = 0;
+  }
+  if (axle->last == 0 && x == 1){
+    axle->pulses[mod]++;
+  }
+  
+  lastMod = mod;
+  axle->last = x;
+  const String sendString = String(axle->side) + "," + String(axle->velocity) + "," + String(axle->distanceTraveled) + "\n";
+  return sendString;
 }
 
 void loop() {
   // chris's stuff
-  // put your main code here, to run repeatedly:
-  int x = 1 - digitalRead(2);
-  unsigned long timeX = millis() / intervalTime;
-  int mod = timeX % INTERVAL;
-
-
-  if (lastMod != mod) {
-    sum = 0;
-    if (timeX >= INTERVAL) {
-      for (int i = 0; i < INTERVAL; i++) {
-        sum += pulses[i];
-      }
-      velocity = sum * wheelDiameter * PI / numMagnet / (windowTime / 1000.0);
-    } else {
-      //pulses array has not been completely filled in yet
-      for (int i = 0; i < mod; i++) {
-        sum += pulses[i];
-      }
-      velocity = sum * wheelDiameter * PI * INTERVAL / mod / numMagnet / (windowTime / 1000.0);
-    }
-    ////Serial.print("Velocity = ");
-    ////Serial.println(velocity);
-
-    distanceTraveled += (velocity * intervalTime) / 1000.0;
-    ////Serial.print("distanceTraveled: ");
-    ////Serial.println(distanceTraveled);
-    pulses[mod] = 0;
+  String send = "";
+  for(unsigned int i = 0; i < NUM_OF_AXLES; i++){
+   send.concat(loopAxle(axles[i]));
   }
-
-
-  if (last == 0 && x == 1) pulses[mod]++;
-
-  for (int i = 0; i < INTERVAL; i++) {
-    ////Serial.print(pulses[i]);
-    ////Serial.print(" ");
-  }
-  ////Serial.println();
-
-  lastMod = mod;
-  last = x;
-
   loopIMU();
-
-  Udp.beginPacket(ip, 7776);
-  String sendString = "[" + String(heading) + "," + String(velocity) + "," + String(distanceTraveled) + "]";
-  ////Serial.print(sendString);
-  Udp.write(sendString.c_str(), sendString.length() + 1); //include terminating null character
-  //Udp.write((byte*)&val, sizeof(int));
-  Udp.endPacket();
+  send.concat(heading);
+  Serial.println(send);
 }
 
 void loopIMU() {
+/*
   microsNow = micros();
   //Heading
   if (microsNow - microsPrevious >= microsPerReading) {
@@ -150,6 +134,7 @@ void loopIMU() {
     microsPrevious = microsPrevious + microsPerReading;
     lastMicros = microsNow;
   }
+  */
 }
 
 
@@ -174,6 +159,8 @@ float convertRawGyro(int gRaw) {
 
 void setupIMU() {
   // start the IMU and filter
+  
+  /*
   CurieIMU.begin();
   CurieIMU.setGyroRate(25);
   CurieIMU.setAccelerometerRate(25);
@@ -234,4 +221,5 @@ void setupIMU() {
   heading = filter.getYaw();
 
   originalHeading = heading;
+  */
 }

@@ -29,7 +29,7 @@ struct Axle{
   int pulses[INTERVAL];
 } leftAxle, rightAxle;
 
-Axle* axles[] = {&leftAxle, &rightAxle};
+Axle* axles[] = {&leftAxle , &rightAxle};
 
 // chris's decl
 Madgwick filter;
@@ -62,13 +62,12 @@ void setup() {
   Serial.begin(9600);
   setupIMU();
 }
+int mod = 0;
+unsigned long timeX = millis() / intervalTime;
 
-String loopAxle(Axle* axle){
+void loopAxle(Axle* axle){
   // put your main code here, to run repeatedly:
   int x = 1 - digitalRead(axle->pin);
-  unsigned long timeX = millis() / intervalTime;
-  int mod = timeX % INTERVAL;
-  
   if  (lastMod != mod) {
     int sum = 0;
     if (timeX >= INTERVAL) {
@@ -86,23 +85,63 @@ String loopAxle(Axle* axle){
     axle->distanceTraveled += (axle->velocity * intervalTime) / 1000.0;
     axle->pulses[mod] = 0;
   }
+  Serial.println (axle->side + " " + pulses);
+//    Serial.print(axle->)
   if (axle->last == 0 && x == 1){
     axle->pulses[mod]++;
   }
-  
-  lastMod = mod;
   axle->last = x;
-  const String sendString = String(axle->side) + "," + String(axle->velocity) + "," + String(axle->distanceTraveled) + "\n";
-  return sendString;
+}
+
+unsigned long D;
+unsigned long d;
+const double width = 25;
+double x = 0;
+double y = 0;
+  
+String convertToXY(){
+  if(rightAxle.distanceTraveled > leftAxle.distanceTraveled){
+    Serial.println("turning right");
+    D = rightAxle.distanceTraveled;
+    d = leftAxle.distanceTraveled;
+    unsigned long radius = d*width/(D-d);
+    double angle = d/radius;
+    x = (radius+width/2)*cos(angle);
+    y = (radius+width/2)*sin(angle);
+    return String(x) + "," + String(y);
+  }
+  else if(leftAxle.distanceTraveled > rightAxle.distanceTraveled){
+    Serial.println("turning left");
+    D = leftAxle.distanceTraveled;
+    d = rightAxle.distanceTraveled;
+    unsigned long radius = d*width/(D-d);
+    double angle = d/radius;
+    x = (radius+width/2)*cos(angle);
+    y = (radius+width/2)*sin(angle);
+    return String(x) + "," + String(y);
+  }
+  else{
+    Serial.println("driving straight");
+    y = leftAxle.distanceTraveled;
+    return String(x) + "," + String(y);
+  }
+
 }
 
 void loop() {
-  // chris's stuff
+  Serial.print("right");
+  Serial.println(rightAxle.distanceTraveled);
+  Serial.print("left");       
+  Serial.println(leftAxle.distanceTraveled);
   String send = "";
-  for(unsigned int i = 0; i < NUM_OF_AXLES; i++){
-   send.concat(loopAxle(axles[i]));
-  }
   loopIMU();
+  timeX = millis() / intervalTime;
+  mod = timeX % INTERVAL;
+  for(unsigned int i = 0; i < NUM_OF_AXLES; i++){
+    loopAxle(axles[i]);
+  }
+  lastMod = mod;
+  send.concat(convertToXY());
   send.concat(heading);
   Serial.println(send);
 }
